@@ -1,6 +1,7 @@
 package main
 
 import (
+	"canary/internal/config"
 	"context"
 	"log"
 	"os"
@@ -12,6 +13,11 @@ import (
 )
 
 func main() {
+	err := config.LoadConfig("config.yaml")
+	if err != nil {
+		log.Fatalf("Error loading config: %v", err)
+	}
+
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- server.Start()

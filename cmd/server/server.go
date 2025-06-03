@@ -1,18 +1,24 @@
 package server
 
 import (
+	"canary/internal/config"
 	"context"
 	"errors"
 	"net/http"
 
 	"canary/internal/api"
-	"canary/internal/config"
 	"canary/internal/logger"
 	serverpkg "canary/internal/server"
+	db "canary/pkg/database"
 )
 
 func Start() error {
 	cfg := config.DefaultConfig()
+
+	_, err := db.Connect(config.Config)
+	if err != nil {
+		return err
+	}
 
 	logger.Initialize(cfg.Logging.Level, cfg.Logging.Format)
 

@@ -95,6 +95,11 @@ func updatePypiFileContent(upgradeMap map[string]string, payload types.Dependenc
 	} else { // Apply all upgrades
 		for pkgName, pkgUpgradeVersion := range upgradeMap {
 			if vulnerableVersion, ok := existingRequirements[pkgName]; ok {
+				existingVersion, _ := semver.NewVersion(existingRequirements[pkgName])
+				upgradeVersion, _ := semver.NewVersion(pkgUpgradeVersion)
+				if !(existingVersion.LessThan(upgradeVersion)) {
+					continue
+				}
 				logger.Debug(fmt.Sprintf("Found vulnerable dependency %s for package %s, upgrading to %s", vulnerableVersion, pkgName, pkgUpgradeVersion))
 				existingRequirements[pkgName] = pkgUpgradeVersion
 			}

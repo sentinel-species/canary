@@ -27,57 +27,55 @@ func NewService(store store.DependencyStore) Service {
 }
 
 func (s *service) Resolve(ctx context.Context, req *types.DependencyCheckRequest) (types.DependencyCheckResponse, error) {
-	payload := types.DependencyCheckRequest{
-		Ecosystem:      req.Ecosystem,
-		Package:        req.Package,
-		CurrentVersion: req.CurrentVersion,
-		UpgradeVersion: req.UpgradeVersion,
-		FileContent:    req.FileContent,
+	// Format file content
+	decoded, err := base64.StdEncoding.DecodeString(req.FileContent)
+	decodedFileContent := string(decoded)
+	if err != nil {
+		logger.Error("Failed: ", err)
 	}
-	rawUpgradeVersions, err := s.store.ResolveUpgrades(ctx, payload)
+	req.FileContent = decodedFileContent
+	currentPackages := extractPackageNames(req.FileContent)
+
+	rawUpgradeVersions, err := s.store.ResolveUpgrades(ctx, *req, currentPackages)
 	if err != nil {
 		logger.Error("Failed: ", err)
 	}
 
-	// TODO This chose something off
-	upgradeVersions := filterLowestFixVersions(rawUpgradeVersions)
-	decodedFileContent, err := base64.StdEncoding.DecodeString(req.FileContent)
-	if err != nil {
-		logger.Error("Failed: ", err)
-	}
+	minimalUpgradableVersions := filterLowestFixVersions(rawUpgradeVersions)
 
-	upgradedRequirementsFile := upgradeRequirements("pypi", string(decodedFileContent), upgradeVersions)
+	upgradedRequirementsFile := upgradeRequirements(minimalUpgradableVersions, *req)
 	response := types.DependencyCheckResponse{
 		FileContent: *upgradedRequirementsFile,
 	}
-	// TODO Response failed for reason
 	return response, nil
 }
 
-func upgradeRequirements(environment string, requirementsFile string, upgrades []types.UpgradeResponse) *string {
+func upgradeRequirements(upgrades []types.UpgradeResponse, payload types.DependencyCheckRequest) *string {
 	var lines []string
 	// Build a map for quick lookup
 	upgradeMap := make(map[string]string)
 	for _, u := range upgrades {
 		upgradeMap[strings.ToLower(u.PackageName)] = u.FixVersion
 	}
-	switch environment {
+	switch payload.Ecosystem {
 	case "pypi":
-		lines = updateRequirementsTxt(upgradeMap, requirementsFile)
+		lines = updatePypiFileContent(upgradeMap, payload)
 	default:
 		return nil
 	}
-	upgradedRequirementsFile := strings.Join(lines, "\n")
-	return &upgradedRequirementsFile
+	// Make it look exactly like the existing file
+	encodedFileContent := base64.StdEncoding.EncodeToString([]byte(strings.Join(lines, "\n")))
+	return &encodedFileContent
 }
 
-func updateRequirementsTxt(upgradeMap map[string]string, requirementsFile string) []string {
-	lines := strings.Split(requirementsFile, "\n")
+func updatePypiFileContent(upgradeMap map[string]string, payload types.DependencyCheckRequest) []string {
+	lines := strings.Split(payload.FileContent, "\n")
 
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-
-		// Ignore nonsense in requirements.txt
+	// Create map of existingRequirements
+	existingRequirements := make(map[string]string)
+	for _, er := range lines {
+		// Format
+		trimmed := strings.TrimSpace(er)
 		if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "--") || trimmed == "" {
 			continue
 		}
@@ -86,13 +84,28 @@ func updateRequirementsTxt(upgradeMap map[string]string, requirementsFile string
 		if len(parts) != 2 {
 			continue
 		}
-
 		pkgName := strings.ToLower(strings.TrimSpace(parts[0]))
-		if newVer, ok := upgradeMap[pkgName]; ok {
-			lines[i] = fmt.Sprintf("%s==%s", parts[0], newVer)
+		pkgVersion := strings.ToLower(strings.TrimSpace(parts[1]))
+		existingRequirements[pkgName] = pkgVersion
+	}
+
+	// Check if upgrade package exist in root
+	if _, ok := existingRequirements[payload.Package]; ok {
+		existingRequirements[payload.Package] = payload.UpgradeVersion
+	} else { // Apply all upgrades
+		for pkgName, pkgUpgradeVersion := range upgradeMap {
+			if vulnerableVersion, ok := existingRequirements[pkgName]; ok {
+				logger.Debug(fmt.Sprintf("Found vulnerable dependency %s for package %s, upgrading to %s", vulnerableVersion, pkgName, pkgUpgradeVersion))
+				existingRequirements[pkgName] = pkgUpgradeVersion
+			}
 		}
 	}
-	return lines
+
+	var result []string
+	for key, value := range existingRequirements {
+		result = append(result, fmt.Sprintf("%s==%s", key, value))
+	}
+	return result
 }
 
 func filterLowestFixVersions(upgrades []types.UpgradeResponse) []types.UpgradeResponse {
@@ -125,4 +138,24 @@ func filterLowestFixVersions(upgrades []types.UpgradeResponse) []types.UpgradeRe
 	}
 
 	return result
+}
+
+func extractPackageNames(input string) []string {
+	lines := strings.Split(input, "\n")
+	var packages []string
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "--") || trimmed == "" {
+			continue
+		}
+
+		parts := strings.SplitN(trimmed, "==", 2)
+		if len(parts) == 2 {
+			pkg := strings.TrimSpace(parts[0])
+			packages = append(packages, pkg)
+		}
+	}
+
+	return packages
 }

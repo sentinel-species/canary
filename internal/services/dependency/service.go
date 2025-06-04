@@ -158,7 +158,7 @@ func extractPackageNames(input string) []string {
 		parts := strings.SplitN(trimmed, "==", 2)
 		if len(parts) == 2 {
 			pkg := strings.TrimSpace(parts[0])
-			packages = append(packages, pkg)
+			packages = append(packages, strings.ToLower(pkg))
 		}
 	}
 

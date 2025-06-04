@@ -1,7 +1,9 @@
 package api
 
 import (
+	"canary/internal/database"
 	"canary/internal/services/dependency"
+	"canary/internal/store"
 	"net/http"
 	"time"
 
@@ -11,7 +13,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func NewRouter() *chi.Mux {
+func NewRouter(db database.Pool) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -21,7 +23,11 @@ func NewRouter() *chi.Mux {
 	r.Use(middleware.Timeout(60 * time.Second))
 
 	healthHandler := handlers.NewHealthHandler()
-	dependencyHandler := handlers.NewDependencyHandler(dependency.NewService())
+
+	dependencyStore := store.NewDependencyStore(db)
+	dependencyService := dependency.NewService(*dependencyStore)
+
+	dependencyHandler := handlers.NewDependencyHandler(dependencyService)
 
 	r.Get("/health", healthHandler.HealthCheck())
 	r.Post("/api/v1/dependency/resolve", dependencyHandler.ResolveDependency())

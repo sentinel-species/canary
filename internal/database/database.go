@@ -4,12 +4,10 @@ import (
 	"canary/internal/types"
 	"context"
 	"errors"
-	"fmt"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"time"
-
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"time"
 )
 
 type connection struct {
@@ -32,7 +30,6 @@ func (c *connection) Ping(ctx context.Context) (err error) {
 
 	_, err = c.DB.Exec(pingCtx, "SELECT 1")
 	if err != nil {
-		fmt.Println("PING")
 		return err
 	}
 	return nil

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"canary/internal/services/dependency"
+	"canary/internal/store"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 
 type DependencyHandler struct {
 	service dependency.Service
+	store   store.DependencyStore
 }
 
 func NewDependencyHandler(service dependency.Service) *DependencyHandler {
@@ -23,6 +25,7 @@ func NewDependencyHandler(service dependency.Service) *DependencyHandler {
 
 func (h *DependencyHandler) ResolveDependency() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
 		var req types.DependencyCheckRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			RespondJSON(w, http.StatusBadRequest, map[string]string{
@@ -40,7 +43,7 @@ func (h *DependencyHandler) ResolveDependency() http.HandlerFunc {
 			return
 		}
 
-		updatedContent, err := h.service.Resolve(&req)
+		response, err := h.service.Resolve(ctx, &req)
 		if err != nil {
 			status := http.StatusInternalServerError
 			errMsg := "Failed to process dependency update"
@@ -55,10 +58,6 @@ func (h *DependencyHandler) ResolveDependency() http.HandlerFunc {
 				"message": errMsg,
 			})
 			return
-		}
-
-		response := types.DependencyCheckResponse{
-			FileContent: updatedContent,
 		}
 
 		RespondJSON(w, http.StatusOK, response)

@@ -1,12 +1,13 @@
 package server
 
 import (
+	"canary/internal/config"
+	"canary/internal/database"
 	"context"
 	"errors"
 	"net/http"
 
 	"canary/internal/api"
-	"canary/internal/config"
 	"canary/internal/logger"
 	serverpkg "canary/internal/server"
 )
@@ -14,9 +15,13 @@ import (
 func Start() error {
 	cfg := config.DefaultConfig()
 
+	db, err := database.Connect(config.Config)
+	if err != nil {
+		return err
+	}
 	logger.Initialize(cfg.Logging.Level, cfg.Logging.Format)
 
-	srv := serverpkg.New(":"+cfg.Server.Port, api.NewRouter(), logger.Get())
+	srv := serverpkg.New(":"+cfg.Server.Port, api.NewRouter(db), logger.Get())
 
 	errChan := make(chan error, 1)
 	go func() {

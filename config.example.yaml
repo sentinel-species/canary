@@ -1,0 +1,10 @@
+server:
+  port: 8080
+database:
+  driver: pgx
+  source: postgres://<username>:<password>@<host>:<port>/<database>?search_path=<schema_name>
+  max_connections: 20
+  max_connection_lifetime: 1h
+  connect_timeout: 5s
+  read_timeout: 15s
+  write_timeout: 30s
